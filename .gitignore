@@ -1,6 +1,16 @@
+node_modules
+dist
+dist-ssr
+*.local
 
-# .v4p backup files
-*~.xml
-
-# Dynamic plugins .dll
-bin/
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+/node_modules
