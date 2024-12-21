@@ -519,7 +519,6 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-const mouse = new Mouse(50, 550);
 const checkpoint = new Checkpoint(50, 550);
 const point = new Point(700, 100);
 const powerups = [
@@ -544,88 +543,165 @@ const platforms = [
 let isMovingLeft = false;
 let isMovingRight = false;
 
+// ... (resto del código anterior se mantiene igual hasta la definición de variables globales)
+
+const mouse = new Mouse(50, 550);
+const mouse2 = new Mouse(100, 550); // Segundo jugador
+
+// Variables de control para ambos jugadores
+let player1 = {
+  isMovingLeft: false,
+  isMovingRight: false
+};
+
+let player2 = {
+  isMovingLeft: false,
+  isMovingRight: false
+};
+
 function gameLoop() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // Dibujar elementos estáticos
   checkpoint.draw(ctx);
   point.draw(ctx);
+  
+  // Verificar colisiones para ambos jugadores
   point.checkMouseCollision(mouse);
+  point.checkMouseCollision(mouse2);
   checkpoint.checkMouseCollision(mouse, point, canvas);
+  checkpoint.checkMouseCollision(mouse2, point, canvas);
+
+  // Dibujar y procesar plataformas para ambos jugadores
   for (const platform of platforms) {
     platform.draw(ctx);
     if (platform instanceof SlowMotionBlock) {
-      platform.checkMouseCollision(mouse,platform);
+      platform.checkMouseCollision(mouse);
+      platform.checkMouseCollision(mouse2);
     }
   }
 
+  // Procesar powerups para ambos jugadores
   for (const powerup of powerups) {
     powerup.draw(ctx);
-  }
-  for (const powerup of powerups) {
-    if (powerup.active && powerup instanceof PowerupJump && mouse.intersects(powerup)) {
-      powerup.apply(mouse);
+    if (powerup.active) {
+      if (powerup instanceof PowerupJump) {
+        if (mouse.intersects(powerup)) powerup.apply(mouse);
+        if (mouse2.intersects(powerup)) powerup.apply(mouse2);
+      }
+      if (powerup instanceof RechargeJump) {
+        if (mouse.intersects(powerup)) powerup.apply(mouse);
+        if (mouse2.intersects(powerup)) powerup.apply(mouse2);
+      }
     }
-    if (powerup.active && powerup instanceof RechargeJump && mouse.intersects(powerup)) {
-      powerup.apply(mouse);
-    }
   }
+
+  // Procesar superficies repelentes para ambos jugadores
   for (const platform of platforms) {
     platform.draw(ctx);
-    if (platform instanceof RepellingSurface && mouse.intersects(platform)) {
-      platform.applyEffect(mouse);
+    if (platform instanceof RepellingSurface) {
+      if (mouse.intersects(platform)) platform.applyEffect(mouse);
+      if (mouse2.intersects(platform)) platform.applyEffect(mouse2);
     }
   }
-  
-  if (isMovingLeft) mouse.move('left');
-  if (isMovingRight) mouse.move('right');
 
+  // Actualizar movimiento del jugador 1
+  if (player1.isMovingLeft) mouse.move('left');
+  if (player1.isMovingRight) mouse.move('right');
+
+  // Actualizar movimiento del jugador 2
+  if (player2.isMovingLeft) mouse2.move('left');
+  if (player2.isMovingRight) mouse2.move('right');
+
+  // Actualizar física para ambos jugadores
   mouse.setPhysics(platforms);
+  mouse2.setPhysics(platforms);
+
+  // Dibujar ambos jugadores
   mouse.draw(ctx);
+  mouse2.draw(ctx);
 
   requestAnimationFrame(gameLoop);
 }
 
-gameLoop();
-
+// Event listeners para controles de ambos jugadores
 document.addEventListener('keydown', (event) => {
   switch (event.key) {
+    // Controles jugador 1 (flechas)
     case 'ArrowLeft':
-      isMovingLeft = true;
-      mouse.updateDirection('left');  // Establecer la última dirección
+      player1.isMovingLeft = true;
+      mouse.updateDirection('left');
       break;
     case 'ArrowRight':
-      isMovingRight = true;
-      mouse.updateDirection('right'); // Establecer la última dirección
+      player1.isMovingRight = true;
+      mouse.updateDirection('right');
       break;
     case 'ArrowUp':
       if (mouse.isClimbing) {
         mouse.climb('up');
       } else {
         mouse.jump();
-        console.log("jump")
       }
-      mouse.updateDirection('up'); // Establecer la última dirección
+      mouse.updateDirection('up');
       break;
     case 'ArrowDown':
       mouse.accelerateFall();
-      mouse.updateDirection('down'); // Establecer la última dirección
+      mouse.updateDirection('down');
+      break;
+
+    // Controles jugador 2 (WASD)
+    case 'a':
+    case 'A':
+      player2.isMovingLeft = true;
+      mouse2.updateDirection('left');
+      break;
+    case 'd':
+    case 'D':
+      player2.isMovingRight = true;
+      mouse2.updateDirection('right');
+      break;
+    case 'w':
+    case 'W':
+      if (mouse2.isClimbing) {
+        mouse2.climb('up');
+      } else {
+        mouse2.jump();
+      }
+      mouse2.updateDirection('up');
+      break;
+    case 's':
+    case 'S':
+      mouse2.accelerateFall();
+      mouse2.updateDirection('down');
       break;
   }
 });
 
 document.addEventListener('keyup', (event) => {
   switch (event.key) {
+    // Controles jugador 1
     case 'ArrowLeft':
-      isMovingLeft = false;
-      if (!isMovingRight) mouse.stopMove();
+      player1.isMovingLeft = false;
+      if (!player1.isMovingRight) mouse.stopMove();
       break;
     case 'ArrowRight':
-      isMovingRight = false;
-      if (!isMovingLeft) mouse.stopMove();
+      player1.isMovingRight = false;
+      if (!player1.isMovingLeft) mouse.stopMove();
+      break;
+
+    // Controles jugador 2
+    case 'a':
+    case 'A':
+      player2.isMovingLeft = false;
+      if (!player2.isMovingRight) mouse2.stopMove();
+      break;
+    case 'd':
+    case 'D':
+      player2.isMovingRight = false;
+      if (!player2.isMovingLeft) mouse2.stopMove();
       break;
   }
 });
-
 
 gameLoop();
 window.addEventListener('resize', () => {
@@ -636,29 +712,7 @@ window.addEventListener('resize', () => {
   ctx.fillStyle = "lightblue";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 });
-canvas.addEventListener('click', (event) => {
-  const mouseX = event.clientX;
-  const mouseY = event.clientY;
 
-  if (
-    mouseX >= point.x &&
-    mouseX <= point.x + point.width &&
-    mouseY >= point.y &&
-    mouseY <= point.y + point.height
-  ) {
-    point.collect();
-    console.log('Point recogido');
-  }
-
-  if (
-    mouseX >= checkpoint.x &&
-    mouseX <= checkpoint.x + checkpoint.width &&
-    mouseY >= checkpoint.y &&
-    mouseY <= checkpoint.y + checkpoint.height
-  ) {
-    checkpoint.completeTask(point, canvas);
-  }
-});
 canvas.addEventListener('taskCompleted', (event) => {
   console.log(event.detail.message); // "Tarea completada"
 });
