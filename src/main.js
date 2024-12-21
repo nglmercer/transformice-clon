@@ -204,7 +204,7 @@ class Checkpoint extends GameObject {
 
 class Point extends GameObject {
   constructor(x, y) {
-    super(x, y, 10, 10, 'yellow');
+    super(x, y, 25, 25, 'yellow');
   }
 }
 
@@ -219,13 +219,14 @@ const checkpoint = new Checkpoint(50, 550);
 const point = new Point(700, 100);
 const powerups = [
   new PowerupJump(300, 250),  // Impulso inmediato
-  new RechargeJump(500, 150)  // Recarga del salto
+  new RechargeJump(500, 20),  // Recarga del salto
+  new RechargeJump(520,90)
 ];
 const platforms = [
   new NormalPlatform(0, 580, 800, 20),
-  new GameObject(200, 500, 100, 80, 'brown'),
-  new GameObject(400, 400, 100, 200, 'brown', 0),
-  new GameObject(700, 400, 100, 200, 'brown'),
+  new GameObject(200, 300, 100, 80, 'brown'),
+  new GameObject(400, 400, 100, 100, 'brown', 0),
+  new GameObject(700, 400, 100, 100, 'brown'),
   new StickyPlatform(600, 350, 200, 20),
   new StickyPlatform(600, 270, 200, 20),
   new StickyPlatform(600, 200, 200, 20),
