@@ -1,7 +1,7 @@
 import './style.css';
 
 class GameObject {
-  constructor(x, y, width, height, color, friction = 1) {
+  constructor(x, y, width, height, color, friction = 0, hasBottomCollision = true) {
     this.x = x;
     this.y = y;
     this.width = width;
@@ -9,6 +9,7 @@ class GameObject {
     this.color = color;
     this.friction = friction;
     this.active = true;
+    this.hasBottomCollision = hasBottomCollision; // Propiedad para habilitar o deshabilitar colisión inferior
   }
 
   draw(ctx) {
@@ -18,6 +19,7 @@ class GameObject {
     }
   }
 }
+
 class PowerupJump extends GameObject {
   constructor(x, y) {
     super(x, y, 20, 20, 'red');
@@ -52,21 +54,10 @@ class RechargeJump extends GameObject {
     }
   }
 }
+
 class NormalPlatform extends GameObject {
   constructor(x, y, width, height) {
     super(x, y, width, height, 'blue', 1);
-  }
-}
-
-class StickyPlatform extends GameObject {
-  constructor(x, y, width, height) {
-    super(x, y, width, height, 'green', 0.2);
-  }
-}
-
-class SlipperyPlatform extends GameObject {
-  constructor(x, y, width, height) {
-    super(x, y, width, height, 'lightblue', 2);
   }
 }
 
@@ -82,6 +73,7 @@ class Mouse extends GameObject {
     this.isClimbing = false;
     this.isTouchingWall = false;
   }
+
   accelerateFall() {
     this.velocityY += 1;
   }
@@ -105,95 +97,117 @@ class Mouse extends GameObject {
       this.isTouchingWall = false;
     }
   }
+
   climb(direction) {
     if (this.isClimbing) {
-      // Calcular velocidad de escalada según la fricción
       let climbSpeed;
       if (this.friction > 0) {
-        climbSpeed = this.jumpForce / this.friction; // Escalar según la fricción positiva
+        climbSpeed = this.jumpForce / this.friction;
       } else if (this.friction < 0) {
-        climbSpeed = Math.max(this.jumpForce + this.friction, 0); // Reducir movilidad en fricción negativa
+        climbSpeed = Math.max(this.jumpForce + this.friction, 0);
       } else {
-        this.velocityY = 0; // Fricción cero: detener movimiento
+        this.velocityY = 0;
         return;
       }
-  
+
       if (direction === 'up') {
-        this.velocityY = -climbSpeed; // Subir
+        this.velocityY = -climbSpeed;
       } else if (direction === 'down') {
-        this.velocityY = climbSpeed; // Bajar
+        this.velocityY = climbSpeed;
       } else {
-        this.velocityY = 0; // Detener movimiento si no hay dirección
+        this.velocityY = 0;
       }
     }
   }
+
+  detectCollisionDirection(obj) {
+    const overlapX = this.x < obj.x + obj.width && this.x + this.width > obj.x;
+    const overlapY = this.y < obj.y + obj.height && this.y + this.height > obj.y;
+  
+    if (overlapX && overlapY) {
+      const fromTop = Math.abs(this.y + this.height - obj.y);
+      const fromBottom = Math.abs(this.y - (obj.y + obj.height));
+      const fromLeft = Math.abs(this.x + this.width - obj.x);
+      const fromRight = Math.abs(this.x - (obj.x + obj.width));
+  
+      const minDist = Math.min(fromTop, fromBottom, fromLeft, fromRight);
+  
+      if (minDist === fromTop) return 'top';
+      if (minDist === fromBottom) return 'bottom';
+      if (minDist === fromLeft) return 'left';
+      if (minDist === fromRight) return 'right';
+    }
+  
+    return null; // No collision
+  }
   
   
+
   update(platforms, powerups) {
     this.velocityY += this.gravity;
     this.y += this.velocityY;
     this.x += this.velocityX;
-  
+
     this.isClimbing = false;
     let wasTouchingWall = this.isTouchingWall;
     this.isTouchingWall = false;
 
-  
     for (const platform of platforms) {
-      if (this.x < platform.x + platform.width &&
-          this.x + this.width > platform.x &&
-          this.y < platform.y + platform.height &&
-          this.y + this.height > platform.y) {
-        
-        if (this.velocityY > 0 && this.y + this.height - this.velocityY <= platform.y) {
-          // Landing on top of a platform
+      if (
+        this.x < platform.x + platform.width &&
+        this.x + this.width > platform.x &&
+        this.y < platform.y + platform.height &&
+        this.y + this.height > platform.y
+      ) {
+        const collisionDirection = this.detectCollisionDirection(platform);
+
+        if (collisionDirection === 'top' && this.velocityY > 0) {
           this.y = platform.y - this.height;
           this.velocityY = 0;
           this.isJumping = false;
-  
-          // Handle friction
-          if (platform.friction === 0) {
-            this.velocityX = 0; // Stop horizontal movement if friction is zero
-          } else {
-            this.velocityX /= platform.friction;
-          }
-        } else if (platform.color === 'brown') {
-          // Handle wall collisions
+        } else if (collisionDirection === 'bottom' && platform.hasBottomCollision) {
+          this.y = platform.y + platform.height;
+          this.velocityY = Math.max(this.velocityY, 0);
+        }  else {
           this.isClimbing = true;
           this.isTouchingWall = true;
           if (!wasTouchingWall) {
-            this.isJumping = false; // Allow jump again upon touching the wall
+            this.isJumping = false;
           }
-  
-          // Stop vertical movement if friction is zero
+
           if (platform.friction <= 0) {
             this.velocityY = platform.friction;
           }
-  
-          // Adjust position based on wall collision
-          if (this.x + this.width > platform.x && this.x < platform.x) {
+
+          if (
+            this.x + this.width > platform.x &&
+            this.x < platform.x
+          ) {
             this.x = platform.x - this.width;
-          } else if (this.x < platform.x + platform.width && this.x + this.width > platform.x + platform.width) {
+          } else if (
+            this.x < platform.x + platform.width &&
+            this.x + this.width > platform.x + platform.width
+          ) {
             this.x = platform.x + platform.width;
           }
         }
       }
     }
-    // Colisión con powerups
+
     for (const powerup of powerups) {
-      if (powerup.active &&
-          this.x < powerup.x + powerup.width &&
-          this.x + this.width > powerup.x &&
-          this.y < powerup.y + powerup.height &&
-          this.y + this.height > powerup.y) {
+      if (
+        powerup.active &&
+        this.x < powerup.x + powerup.width &&
+        this.x + this.width > powerup.x &&
+        this.y < powerup.y + powerup.height &&
+        this.y + this.height > powerup.y
+      ) {
         powerup.apply(this);
       }
     }
-    
-    // Prevent mouse from going off-screen
+
     this.x = Math.max(0, Math.min(this.x, canvas.width - this.width));
   }
-  
 }
 
 class Checkpoint extends GameObject {
@@ -218,19 +232,19 @@ const mouse = new Mouse(50, 550);
 const checkpoint = new Checkpoint(50, 550);
 const point = new Point(700, 100);
 const powerups = [
-  new PowerupJump(300, 250),  // Impulso inmediato
-  new RechargeJump(500, 20),  // Recarga del salto
-  new RechargeJump(520,90)
+  new PowerupJump(300, 220),
+  new RechargeJump(500, 20),
+  new RechargeJump(520, 90),
 ];
 const platforms = [
   new NormalPlatform(0, 580, 800, 20),
-  new GameObject(200, 300, 100, 80, 'brown'),
+  new GameObject(200, 300, 100, 80, 'brown', 1, false),
   new GameObject(400, 400, 100, 100, 'brown', 0),
   new GameObject(700, 400, 100, 100, 'brown'),
-  new StickyPlatform(600, 350, 200, 20),
-  new StickyPlatform(600, 270, 200, 20),
-  new StickyPlatform(600, 200, 200, 20),
-  new SlipperyPlatform(100, 400, 200, 20),
+  new GameObject(600, 350, 200, 40, 'cyan',0),
+  new GameObject(600, 220, 200, 40),
+  new GameObject(600, 120, 200, 40),
+  new GameObject(100, 400, 200, 20),
 ];
 
 let isMovingLeft = false;
@@ -241,12 +255,11 @@ function gameLoop() {
 
   checkpoint.draw(ctx);
   point.draw(ctx);
-  
+
   for (const platform of platforms) {
     platform.draw(ctx);
   }
 
-  // Dibujar powerups
   for (const powerup of powerups) {
     powerup.draw(ctx);
   }
@@ -257,10 +270,12 @@ function gameLoop() {
   mouse.update(platforms, powerups);
   mouse.draw(ctx);
 
-  if (mouse.x < point.x + point.width &&
-      mouse.x + mouse.width > point.x &&
-      mouse.y < point.y + point.height &&
-      mouse.y + mouse.height > point.y) {
+  if (
+    mouse.x < point.x + point.width &&
+    mouse.x + mouse.width > point.x &&
+    mouse.y < point.y + point.height &&
+    mouse.y + mouse.height > point.y
+  ) {
     point.x = Math.random() * (canvas.width - point.width);
     point.y = Math.random() * (canvas.height - point.height);
   }
@@ -278,7 +293,7 @@ document.addEventListener('keydown', (event) => {
       break;
     case 'ArrowUp':
       if (mouse.isClimbing) {
-        mouse.climb("up");
+        mouse.climb('up');
       } else {
         mouse.jump();
       }
@@ -288,7 +303,6 @@ document.addEventListener('keydown', (event) => {
       break;
   }
 });
-
 
 document.addEventListener('keyup', (event) => {
   switch (event.key) {
@@ -304,4 +318,3 @@ document.addEventListener('keyup', (event) => {
 });
 
 gameLoop();
-
