@@ -1,5 +1,56 @@
   import './style.css';
+const ws = new WebSocket('ws://localhost:3000'); 
+const localClientId = Math.random().toString(36).substr(2, 9); // ID único para el cliente local
+ws.onopen = () => {
+  console.log('Connected to the signaling server');
+  ws.send(JSON.stringify({ type: 'join_room', roomId: "rom1", clientId: localClientId }));
+  ws.onmessage = (event) => {
+    //console.log('Message received from server:', event.data);
+    const data = JSON.parse(event.data);
+  
+    switch (data.type) {
+      case 'game_state':
+        // Inicializar el estado del juego completo
+        initializeGameState(data);
+        break;
+  
+      case 'player_joined':
+        // Spawnear al nuevo jugador
+        spawnPlayer(data.clientId, data.state);
+        break;
+  
+      case 'player_update':
+        //console.log('Player update:', data);
+        // Actualizar el estado de un jugador existente
+        // updatePlayerState(data.clientId, data.state);
+        playerManager.updatePlayerState(data.clientId, data.state);
+        break;
+  
+      case 'player_left':
+        // Eliminar un jugador del cliente
+        console.log(`Player left: ${data.clientId}`);
+        removePlayer(data.clientId);
+        break;
+    }
+  };
 
+
+}
+function initializeGameState(message) {
+  console.log('Initializing game state:', message);
+  Object.entries(message.state.players).forEach(([clientId, playerState]) => {
+    playerManager.addPlayer(playerState.x, playerState.y, playerState.controls, clientId);
+  });
+
+}
+function removePlayer(clientId) {
+  console.log(`Removing player with ID: ${clientId}`);
+}
+// Función para spawnear jugadores
+
+function player_update(clientId, state) {
+ console.log(`Updating player with ID: ${clientId}`, state);
+}
 class GameObject {
   constructor(x, y, width, height, color, hasBottomCollision = true, src = null) {
     this.x = x;
@@ -420,7 +471,15 @@ class Mouse extends GameObject {
       // Si no hay superposición en ambos ejes, no hay colisión
       return false;
     }
-    
+    getPlayerdata() {
+      return {
+        x: this.x,
+        y: this.y,
+        velocityX: this.velocityX,
+        velocityY: this.velocityY,
+        isJumping: this.isJumping
+      };
+    }
 }
 class Checkpoint extends GameObject {
   constructor(x, y) {
@@ -541,11 +600,11 @@ class PlayerManager {
     this.playerControls = new Map(); // Mapa para almacenar los controles de cada jugador
   }
 
-  addPlayer(x, y, controls) {
+  addPlayer(x, y, controls, clientId) {
     const player = new Mouse(x, y);
     const playerData = {
       player,
-      id: `player_${this.players.length}`,
+      id: `${clientId}`,
       controls,
       isMovingLeft: false,
       isMovingRight: false
@@ -564,7 +623,7 @@ class PlayerManager {
 
   setupPlayerControls(playerData) {
     const { controls } = playerData;
-    
+    if (!controls) return;
     document.addEventListener('keydown', (event) => {
       if (event.key === controls.left) {
         playerData.isMovingLeft = true;
@@ -641,6 +700,25 @@ class PlayerManager {
       playerData.player.draw(ctx);
     });
   }
+  updatePlayerState(clientId, state) {
+    if (!state) return;
+    const playerData = this.players.find(p => p.id === clientId);
+    if (playerData) {
+      const player = playerData.player;
+      player.x = state.x;
+      player.y = state.y;
+      player.velocityX = state.velocityX;
+      player.velocityY = state.velocityY;
+      player.isJumping = state.isJumping;
+    }
+  }
+  getPlayerdata(clientId) {
+    const playerData = this.players.find(p => p.id === clientId);
+    if (playerData) {
+      return playerData.player.getPlayerdata();
+    }
+  }
+
 }
 
 const canvas = document.getElementById('gameCanvas');
@@ -673,23 +751,25 @@ const platforms = [
 const playerManager = new PlayerManager();
 
 // Configurar los controles para cada jugador
-const player1Controls = {
+const defaultcontrolls = {
   left: 'ArrowLeft',
   right: 'ArrowRight',
   up: 'ArrowUp',
   down: 'ArrowDown'
 };
+function spawnPlayer(clientId, state) {
+  console.log(`Spawning player with ID: ${clientId}`);
+  const playerControls = (clientId === localClientId)
+    ? defaultcontrolls // Solo asignar controles locales al jugador local
+    : {}; // Los demás jugadores no tendrán controles locales
 
-const player2Controls = {
-  left: 'a',
-  right: 'd',
-  up: 'w',
-  down: 's'
-};
+  playerManager.addPlayer(50,550, playerControls, clientId);
+  console.log('Player spawned:', state,clientId);
+}
 
-// Añadir jugadores iniciales
-playerManager.addPlayer(50, 550, player1Controls);
-playerManager.addPlayer(100, 550, player2Controls);
+// Añadir jugadores locamente
+//playerManager.addPlayer(50, 550, defaultcontrolls);
+//playerManager.addPlayer(100, 550, player2Controls);
 
 // Modificar el gameLoop para usar PlayerManager
 function gameLoop() {
@@ -705,10 +785,12 @@ function gameLoop() {
   // Dibujar powerups
   powerups.forEach(powerup => powerup.draw(ctx));
 
-  // Actualizar y dibujar todos los jugadores
   playerManager.update(platforms, powerups, checkpoint, point, canvas);
   playerManager.draw(ctx);
-
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const dataplayer = playerManager.getPlayerdata(localClientId);
+    ws.send(JSON.stringify({ type: 'player_update', state: dataplayer }));  
+  }
   requestAnimationFrame(gameLoop);
 }
 
