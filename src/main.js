@@ -450,19 +450,30 @@ class Checkpoint extends GameObject {
 class SlowMotionBlock extends GameObject {
   constructor(x, y, width = 40, height = 40) {
     super(x, y, width, height, '#9C27B0', true, "/src/assets/blocks/Chocolat.png");
-    this.isColliding = false;
-    this.hasRecharged = false;
+    this.playerStates = new Map(); // Mapa para almacenar el estado de cada jugador
     this.slowFactor = 0.2;
     this.jumpReductionFactor = 0.2;
     this.lastx = x;
     this.lasty = y;
   }
 
+  // Método auxiliar para obtener o crear el estado de un jugador
+  getPlayerState(player) {
+    const playerId = player.id || player; // Usa el ID del jugador si existe, si no usa el objeto como clave
+    if (!this.playerStates.has(playerId)) {
+      this.playerStates.set(playerId, {
+        isColliding: false,
+        hasRecharged: false
+      });
+    }
+    return this.playerStates.get(playerId);
+  }
+
   checkMouseCollision(mouse) {
+    const playerState = this.getPlayerState(mouse);
     const isCurrentlyColliding = mouse.isColliding(this);
     
     if (isCurrentlyColliding) {
-      console.log('Mouse position:',isCurrentlyColliding, mouse.x, mouse.y,this.x, this.y);
       this.lastx = this.x;
       this.lasty = this.y;
       mouse.setTemporaryEffects(
@@ -470,28 +481,39 @@ class SlowMotionBlock extends GameObject {
         this.jumpReductionFactor
       );
       
-      if (!this.hasRecharged && mouse.canCollide()) {
+      if (!playerState.hasRecharged && mouse.canCollide()) {
         mouse.rechargeJump();
-        this.hasRecharged = true;
+        playerState.hasRecharged = true;
       }
       
-      this.isColliding = true;
+      playerState.isColliding = true;
     } else {
-      if (this.isColliding) {
+      if (playerState.isColliding) {
         mouse.resetTemporaryEffects();
-        this.isColliding = false;
-        this.hasRecharged = false;
+        playerState.isColliding = false;
+        playerState.hasRecharged = false;
       }
     }
   }
 
   draw(ctx) {
     super.draw(ctx);
-    if (this.isColliding) {
+    
+    // Dibuja el borde si cualquier jugador está colisionando
+    const anyPlayerColliding = Array.from(this.playerStates.values())
+      .some(state => state.isColliding);
+      
+    if (anyPlayerColliding) {
       ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = 2;
       ctx.strokeRect(this.x, this.y, this.width, this.height);
     }
+  }
+
+  // Método para limpiar el estado de un jugador cuando sea necesario
+  clearPlayerState(player) {
+    const playerId = player.id || player;
+    this.playerStates.delete(playerId);
   }
 }
 class Point extends GameObject {
@@ -513,6 +535,114 @@ class Point extends GameObject {
     }
   }
 }
+class PlayerManager {
+  constructor() {
+    this.players = [];
+    this.playerControls = new Map(); // Mapa para almacenar los controles de cada jugador
+  }
+
+  addPlayer(x, y, controls) {
+    const player = new Mouse(x, y);
+    const playerData = {
+      player,
+      id: `player_${this.players.length}`,
+      controls,
+      isMovingLeft: false,
+      isMovingRight: false
+    };
+    this.players.push(playerData);
+    this.setupPlayerControls(playerData);
+    return playerData;
+  }
+
+  removePlayer(playerId) {
+    const index = this.players.findIndex(p => p.id === playerId);
+    if (index !== -1) {
+      this.players.splice(index, 1);
+    }
+  }
+
+  setupPlayerControls(playerData) {
+    const { controls } = playerData;
+    
+    document.addEventListener('keydown', (event) => {
+      if (event.key === controls.left) {
+        playerData.isMovingLeft = true;
+        playerData.player.updateDirection('left');
+      }
+      if (event.key === controls.right) {
+        playerData.isMovingRight = true;
+        playerData.player.updateDirection('right');
+      }
+      if (event.key === controls.up) {
+        if (playerData.player.isClimbing) {
+          playerData.player.climb('up');
+        } else {
+          playerData.player.jump();
+        }
+        playerData.player.updateDirection('up');
+      }
+      if (event.key === controls.down) {
+        playerData.player.accelerateFall();
+        playerData.player.updateDirection('down');
+      }
+    });
+
+    document.addEventListener('keyup', (event) => {
+      if (event.key === controls.left) {
+        playerData.isMovingLeft = false;
+        if (!playerData.isMovingRight) playerData.player.stopMove();
+      }
+      if (event.key === controls.right) {
+        playerData.isMovingRight = false;
+        if (!playerData.isMovingLeft) playerData.player.stopMove();
+      }
+    });
+  }
+
+  update(platforms, powerups, checkpoint, point, canvas) {
+    this.players.forEach(playerData => {
+      const player = playerData.player;
+      
+      // Actualizar movimiento
+      if (playerData.isMovingLeft) player.move('left');
+      if (playerData.isMovingRight) player.move('right');
+
+      // Actualizar física
+      player.setPhysics(platforms);
+
+      // Verificar colisiones con puntos y checkpoint
+      point.checkMouseCollision(player);
+      checkpoint.checkMouseCollision(player, point, canvas);
+
+      // Verificar colisiones con plataformas especiales
+      platforms.forEach(platform => {
+        if (platform instanceof SlowMotionBlock) {
+          platform.checkMouseCollision(player);
+        }
+        if (platform instanceof RepellingSurface && player.intersects(platform)) {
+          platform.applyEffect(player);
+        }
+      });
+
+      // Procesar powerups
+      powerups.forEach(powerup => {
+        if (powerup.active && player.intersects(powerup)) {
+          if (powerup instanceof PowerupJump || powerup instanceof RechargeJump) {
+            powerup.apply(player);
+          }
+        }
+      });
+    });
+  }
+
+  draw(ctx) {
+    this.players.forEach(playerData => {
+      playerData.player.draw(ctx);
+    });
+  }
+}
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
@@ -540,25 +670,28 @@ const platforms = [
   new SlowMotionBlock(600, 290, 200, 40, 'cyan'),             
 ];
 
-let isMovingLeft = false;
-let isMovingRight = false;
+const playerManager = new PlayerManager();
 
-// ... (resto del código anterior se mantiene igual hasta la definición de variables globales)
-
-const mouse = new Mouse(50, 550);
-const mouse2 = new Mouse(100, 550); // Segundo jugador
-
-// Variables de control para ambos jugadores
-let player1 = {
-  isMovingLeft: false,
-  isMovingRight: false
+// Configurar los controles para cada jugador
+const player1Controls = {
+  left: 'ArrowLeft',
+  right: 'ArrowRight',
+  up: 'ArrowUp',
+  down: 'ArrowDown'
 };
 
-let player2 = {
-  isMovingLeft: false,
-  isMovingRight: false
+const player2Controls = {
+  left: 'a',
+  right: 'd',
+  up: 'w',
+  down: 's'
 };
 
+// Añadir jugadores iniciales
+playerManager.addPlayer(50, 550, player1Controls);
+playerManager.addPlayer(100, 550, player2Controls);
+
+// Modificar el gameLoop para usar PlayerManager
 function gameLoop() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -566,142 +699,19 @@ function gameLoop() {
   checkpoint.draw(ctx);
   point.draw(ctx);
   
-  // Verificar colisiones para ambos jugadores
-  point.checkMouseCollision(mouse);
-  point.checkMouseCollision(mouse2);
-  checkpoint.checkMouseCollision(mouse, point, canvas);
-  checkpoint.checkMouseCollision(mouse2, point, canvas);
+  // Dibujar plataformas
+  platforms.forEach(platform => platform.draw(ctx));
+  
+  // Dibujar powerups
+  powerups.forEach(powerup => powerup.draw(ctx));
 
-  // Dibujar y procesar plataformas para ambos jugadores
-  for (const platform of platforms) {
-    platform.draw(ctx);
-    if (platform instanceof SlowMotionBlock) {
-      platform.checkMouseCollision(mouse);
-      platform.checkMouseCollision(mouse2);
-    }
-  }
-
-  // Procesar powerups para ambos jugadores
-  for (const powerup of powerups) {
-    powerup.draw(ctx);
-    if (powerup.active) {
-      if (powerup instanceof PowerupJump) {
-        if (mouse.intersects(powerup)) powerup.apply(mouse);
-        if (mouse2.intersects(powerup)) powerup.apply(mouse2);
-      }
-      if (powerup instanceof RechargeJump) {
-        if (mouse.intersects(powerup)) powerup.apply(mouse);
-        if (mouse2.intersects(powerup)) powerup.apply(mouse2);
-      }
-    }
-  }
-
-  // Procesar superficies repelentes para ambos jugadores
-  for (const platform of platforms) {
-    platform.draw(ctx);
-    if (platform instanceof RepellingSurface) {
-      if (mouse.intersects(platform)) platform.applyEffect(mouse);
-      if (mouse2.intersects(platform)) platform.applyEffect(mouse2);
-    }
-  }
-
-  // Actualizar movimiento del jugador 1
-  if (player1.isMovingLeft) mouse.move('left');
-  if (player1.isMovingRight) mouse.move('right');
-
-  // Actualizar movimiento del jugador 2
-  if (player2.isMovingLeft) mouse2.move('left');
-  if (player2.isMovingRight) mouse2.move('right');
-
-  // Actualizar física para ambos jugadores
-  mouse.setPhysics(platforms);
-  mouse2.setPhysics(platforms);
-
-  // Dibujar ambos jugadores
-  mouse.draw(ctx);
-  mouse2.draw(ctx);
+  // Actualizar y dibujar todos los jugadores
+  playerManager.update(platforms, powerups, checkpoint, point, canvas);
+  playerManager.draw(ctx);
 
   requestAnimationFrame(gameLoop);
 }
 
-// Event listeners para controles de ambos jugadores
-document.addEventListener('keydown', (event) => {
-  switch (event.key) {
-    // Controles jugador 1 (flechas)
-    case 'ArrowLeft':
-      player1.isMovingLeft = true;
-      mouse.updateDirection('left');
-      break;
-    case 'ArrowRight':
-      player1.isMovingRight = true;
-      mouse.updateDirection('right');
-      break;
-    case 'ArrowUp':
-      if (mouse.isClimbing) {
-        mouse.climb('up');
-      } else {
-        mouse.jump();
-      }
-      mouse.updateDirection('up');
-      break;
-    case 'ArrowDown':
-      mouse.accelerateFall();
-      mouse.updateDirection('down');
-      break;
-
-    // Controles jugador 2 (WASD)
-    case 'a':
-    case 'A':
-      player2.isMovingLeft = true;
-      mouse2.updateDirection('left');
-      break;
-    case 'd':
-    case 'D':
-      player2.isMovingRight = true;
-      mouse2.updateDirection('right');
-      break;
-    case 'w':
-    case 'W':
-      if (mouse2.isClimbing) {
-        mouse2.climb('up');
-      } else {
-        mouse2.jump();
-      }
-      mouse2.updateDirection('up');
-      break;
-    case 's':
-    case 'S':
-      mouse2.accelerateFall();
-      mouse2.updateDirection('down');
-      break;
-  }
-});
-
-document.addEventListener('keyup', (event) => {
-  switch (event.key) {
-    // Controles jugador 1
-    case 'ArrowLeft':
-      player1.isMovingLeft = false;
-      if (!player1.isMovingRight) mouse.stopMove();
-      break;
-    case 'ArrowRight':
-      player1.isMovingRight = false;
-      if (!player1.isMovingLeft) mouse.stopMove();
-      break;
-
-    // Controles jugador 2
-    case 'a':
-    case 'A':
-      player2.isMovingLeft = false;
-      if (!player2.isMovingRight) mouse2.stopMove();
-      break;
-    case 'd':
-    case 'D':
-      player2.isMovingRight = false;
-      if (!player2.isMovingLeft) mouse2.stopMove();
-      break;
-  }
-});
 
 gameLoop();
 window.addEventListener('resize', () => {
