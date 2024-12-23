@@ -1,6 +1,6 @@
   import './style.css';
   console.log(window.location);
-  const ws = new WebSocket("ws://clean-tiger-84.deno.dev");
+  const ws = new WebSocket("wss://clean-tiger-84.deno.dev");
   const localClientId = Math.random().toString(36).substr(2, 9); // ID único para el cliente local
 ws.onopen = () => {
   console.log('Connected to the signaling server');
