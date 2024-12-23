@@ -11,11 +11,13 @@ ws.onopen = () => {
     switch (data.type) {
       case 'game_state':
         // Inicializar el estado del juego completo
+        console.log('Initializing game state:', data);
         initializeGameState(data);
         break;
   
       case 'player_joined':
         // Spawnear al nuevo jugador
+        console.log(`Player joined: ${data.clientId}`,data);
         spawnPlayer(data.clientId, data.state);
         break;
   
@@ -23,6 +25,7 @@ ws.onopen = () => {
         //console.log('Player update:', data);
         // Actualizar el estado de un jugador existente
         // updatePlayerState(data.clientId, data.state);
+        //console.log(`Player update: ${data.clientId}`);
         playerManager.updatePlayerState(data.clientId, data.state);
         break;
   
@@ -38,13 +41,25 @@ ws.onopen = () => {
 }
 function initializeGameState(message) {
   console.log('Initializing game state:', message);
-  Object.entries(message.state.players).forEach(([clientId, playerState]) => {
+/*   Object.entries(message.state.players).forEach(([clientId, playerState]) => {
+    console.log("PlayerState",playerState,clientId);
     playerManager.addPlayer(playerState.x, playerState.y, playerState.controls, clientId);
-  });
+  }); */
+  if (message.state.players && message.state.players.length > 0) {
+    console.log("Players",message.state.players);
+    message.state.players.forEach(player => {
+      if (localClientId !== player.clientId) {
+        playerManager.addPlayer(player.x, player.y, player.controls, player.clientId);
+        
+      }
 
+      });
+  }
+  
 }
 function removePlayer(clientId) {
   console.log(`Removing player with ID: ${clientId}`);
+  playerManager.removePlayer(clientId);
 }
 // Función para spawnear jugadores
 
