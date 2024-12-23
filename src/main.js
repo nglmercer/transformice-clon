@@ -374,13 +374,100 @@ class Mouse extends GameObject {
     this.isInSlowMotion = false;
     this.originalGravity = this.terminalVelocity;
     this.isGravityModified = false;
+        // Propiedades de animación
+        this.direction = 'right';
+        this.frames = [];
+        this.currentFrame = 0;
+        this.frameCount = 4;  // Número total de frames para correr
+        this.animationSpeed = 0.15;  // Velocidad de la animación
+        this.frameTimer = 0;
+        
+        this.defaultWidth = 40;  // Ancho normal
+        this.defaultHeight = 40; // Alto normal
+        this.runningWidth = 65;  // Ancho para frames de corrida
+        this.runningHeight = 50; // Alto para frames de corrida
+        this.verticalOffset = 10; // Píxeles a elevar durante la animación
+        // Cargar los frames
+        this.loadFrames();
+  }
+  loadFrames() {
+    // Cargar la imagen por defecto (cuando está quieto)
+    const defaultimage = new Image();
+    defaultimage.src = `./src/assets/mice/mice1.png`;
+    this.frames.push(defaultimage);
+    
+    // Cargar los frames de movimiento
+    for (let i = 1; i <= this.frameCount; i++) {
+      const img = new Image();
+      img.src = `./src/assets/mice/micerun${i}.png`;
+      this.frames.push(img);
+    }
+  }
+  updateAnimation(deltaTime) {
+    if (Math.abs(this.velocityX) > 0) {
+      // Actualizar animación solo si se está moviendo
+      this.frameTimer += deltaTime;
+      if (this.frameTimer >= this.animationSpeed) {
+        // Usar los frames de movimiento (índices 1-4)
+        this.currentFrame = ((this.currentFrame % this.frameCount) + 1);
+        this.frameTimer = 0;
+      }
+    } else {
+      // Cuando está quieto, usar el frame por defecto (índice 0)
+      this.currentFrame = 0;
+      this.frameTimer = 0;
+    }
+  }
+  draw(ctx) {
+    ctx.save();
+    let drawWidth, drawHeight, drawX, drawY;
+    // Aplicar efecto espejo según la dirección
+    if (this.direction === 'left') {
+      ctx.translate(this.x + this.width, this.y);
+      ctx.scale(-1, 1);
+    } else {
+      ctx.translate(this.x, this.y);
+    }
+
+    const currentSprite = this.frames[this.currentFrame];
+    if (currentSprite && currentSprite.complete) {
+      // Ajustar el escalado según si es un frame de corriendo o no
+      if (this.currentFrame >= 1 && this.currentFrame <= 4) {
+        drawWidth = this.runningWidth;
+        drawHeight = this.runningHeight;
+        // Para los frames de corriendo (más pequeños)
+        const scaleFactor = 1.4; // Ajusta este valor según necesites
+        const widthAdjustment = this.width * scaleFactor;
+        const heightAdjustment = this.height * scaleFactor;
+        
+        // Centrar el sprite escalado
+        const xOffset =  -(drawWidth - this.width) / 2;
+        const yOffset = -(drawHeight - this.height) / 2 - this.verticalOffset;
+        
+        ctx.drawImage(
+          currentSprite, 
+          xOffset, 
+          yOffset, 
+          widthAdjustment, 
+          heightAdjustment
+        );
+      } else {
+        // Para el frame estático (tamaño normal)
+        ctx.drawImage(currentSprite, 0, 0, this.width, this.height);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  updateDirection(direction) {
+    this.direction = direction;
   }
   setTemporaryEffects(slowFactor, reductgravity) {
     if (!this.isInSlowMotion) {
       // Almacenar los valores originales
       this.originalSpeed = this.speed;
-      this.originalJumpForce = this.jumpForce;
-      
+      if (this.velocityX <= 2) this.jumpForce = Math.max(4, Math.min(10, this.jumpForce * slowFactor));;
       // Modificar la velocidad de movimiento y la fuerza del salto
       this.speed *= slowFactor;
       this.isInSlowMotion = true;
@@ -429,10 +516,12 @@ class Mouse extends GameObject {
         this.velocityX = -this.speed;
         this.isMovingLeft = true;
         this.isMovingRight = false;
+        this.direction = 'left';  // Actualizar dirección para el efecto espejo
       } else if (direction === 'right') {
         this.velocityX = this.speed;
         this.isMovingRight = true;
         this.isMovingLeft = false;
+        this.direction = 'right';  // Actualizar dirección para el efecto espejo
       }
     }
     stopMove() {
@@ -522,13 +611,14 @@ class Checkpoint extends GameObject {
   }
 }
 class SlowMotionBlock extends GameObject {
-  constructor(x, y, width = 40, height = 40) {
+  constructor(x, y, width = 40, height = 40, rechargeJump = true) {
     super(x, y, width, height, '#9C27B0', true, "/src/assets/blocks/Chocolat.png");
     this.playerStates = new Map(); // Mapa para almacenar el estado de cada jugador
     this.slowFactor = 0.2;
     this.jumpReductionFactor = 0.2;
     this.lastx = x;
     this.lasty = y;
+    this.rechargeJump = rechargeJump;
   }
 
   // Método auxiliar para obtener o crear el estado de un jugador
@@ -554,7 +644,8 @@ class SlowMotionBlock extends GameObject {
         this.slowFactor,
         this.jumpReductionFactor
       );
-      
+      if (this.rechargeJump)mouse.rechargeJump();
+
       if (!playerState.hasRecharged && mouse.canCollide()) {
         mouse.rechargeJump();
         playerState.hasRecharged = true;
@@ -612,7 +703,8 @@ class Point extends GameObject {
 class PlayerManager {
   constructor() {
     this.players = [];
-    this.playerControls = new Map(); // Mapa para almacenar los controles de cada jugador
+    this.playerControls = new Map();
+    this.lastTime = 0;
   }
 
   addPlayer(x, y, controls, clientId) {
@@ -675,13 +767,16 @@ class PlayerManager {
   }
 
   update(platforms, powerups, checkpoint, point, canvas) {
+    const currentTime = performance.now();
+    const deltaTime = (currentTime - this.lastTime) / 1000; // Convertir a segundos
+    this.lastTime = currentTime;
     this.players.forEach(playerData => {
       const player = playerData.player;
       
       // Actualizar movimiento
+      player.updateAnimation(deltaTime);
       if (playerData.isMovingLeft) player.move('left');
       if (playerData.isMovingRight) player.move('right');
-
       // Actualizar física
       player.setPhysics(platforms);
 
