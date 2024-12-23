@@ -1,6 +1,7 @@
   import './style.css';
-const ws = new WebSocket('ws://localhost:3000'); 
-const localClientId = Math.random().toString(36).substr(2, 9); // ID único para el cliente local
+  console.log(window.location);
+  const ws = new WebSocket("ws://clean-tiger-84.deno.dev");
+  const localClientId = Math.random().toString(36).substr(2, 9); // ID único para el cliente local
 ws.onopen = () => {
   console.log('Connected to the signaling server');
   ws.send(JSON.stringify({ type: 'join_room', roomId: "rom1", clientId: localClientId }));
@@ -26,7 +27,9 @@ ws.onopen = () => {
         // Actualizar el estado de un jugador existente
         // updatePlayerState(data.clientId, data.state);
         //console.log(`Player update: ${data.clientId}`);
-        playerManager.updatePlayerState(data.clientId, data.state);
+        if (localClientId !== data.clientId) {
+          playerManager.updatePlayerState(data.clientId, data.state);
+        }
         break;
   
       case 'player_left':
@@ -39,6 +42,13 @@ ws.onopen = () => {
 
 
 }
+ws.onclose = () => {
+  console.log('Disconnected from the signaling server');
+};
+
+ws.onerror = (error) => {
+  console.error('WebSocket error:', error);
+};
 function initializeGameState(message) {
   console.log('Initializing game state:', message);
 /*   Object.entries(message.state.players).forEach(([clientId, playerState]) => {
