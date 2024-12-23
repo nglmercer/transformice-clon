@@ -1,4 +1,10 @@
   import './style.css';
+  import miceimg from './assets/mice/mice1.png';
+  import checkpointimg from "./assets/decors/Hole.png";
+  import trampolinetexture from "./assets/blocks/Trampoline.png";
+  import chocolattexture from "./assets/blocks/Chocolat.png";
+  import cheesetexture from "./assets/decors/Cheese.png";
+  import grasstexture from "./assets/blocks/Grass.png";
   console.log(window.location);
   const ws = new WebSocket("wss://clean-tiger-84.deno.dev");
   const localClientId = Math.random().toString(36).substr(2, 9); // ID único para el cliente local
@@ -265,7 +271,7 @@ class Platform extends GameObject {
   
 class RepellingSurface extends GameObject {
   constructor(x, y, width, height) {
-    super(x, y, width, height, 'pink', true, "./src/assets/blocks/Trampoline.png");
+    super(x, y, width, height, 'pink', true, trampolinetexture);
     this.bounceForce = 5;
     this.lastBounceTime = 0;
     this.bounceCooldown = 50;
@@ -365,7 +371,7 @@ class RepellingSurface extends GameObject {
 }
 class Mouse extends GameObject {
   constructor(x, y) {
-    super(x, y, 40, 40, 'gray', false, "./src/assets/mice/mice1.png");
+    super(x, y, 40, 40, 'gray', false, miceimg);
     this.speed = 2;
     this.jumpForce = 8;
     this.jumpMultiplier = 1;
@@ -401,18 +407,19 @@ class Mouse extends GameObject {
         this.loadFrames();
   }
   loadFrames() {
-    // Cargar la imagen por defecto (cuando está quieto)
     const defaultimage = new Image();
-    defaultimage.src = `./src/assets/mice/mice1.png`;
+    defaultimage.src = miceimg;
     this.frames.push(defaultimage);
-    
-    // Cargar los frames de movimiento
-    for (let i = 1; i <= this.frameCount; i++) {
+  
+    // Cargar los frames de movimiento dinámicamente
+    const images = import.meta.glob('./assets/mice/micerun*.png', { eager: true });
+    for (const path in images) {
       const img = new Image();
-      img.src = `./src/assets/mice/micerun${i}.png`;
+      img.src = images[path].default || images[path]; // Usar el path generado por Vite
       this.frames.push(img);
     }
   }
+  
   updateAnimation(deltaTime) {
     if (Math.abs(this.velocityX) > 0) {
       // Actualizar animación solo si se está moviendo
@@ -597,7 +604,7 @@ class Mouse extends GameObject {
 }
 class Checkpoint extends GameObject {
   constructor(x, y) {
-    super(x, y, 30, 30, 'purple', false, "./src/assets/decors/Hole.png");
+    super(x, y, 30, 30, 'purple', false, checkpointimg);
     this.completed = false;
   }
 
@@ -622,7 +629,7 @@ class Checkpoint extends GameObject {
 }
 class SlowMotionBlock extends GameObject {
   constructor(x, y, width = 40, height = 40, rechargeJump = true) {
-    super(x, y, width, height, '#9C27B0', true, "./src/assets/blocks/Chocolat.png");
+    super(x, y, width, height, '#9C27B0', true, chocolattexture);
     this.playerStates = new Map(); // Mapa para almacenar el estado de cada jugador
     this.slowFactor = 0.2;
     this.jumpReductionFactor = 0.2;
@@ -693,7 +700,7 @@ class SlowMotionBlock extends GameObject {
 }
 class Point extends GameObject {
   constructor(x, y) {
-    super(x, y, 25, 25, 'yellow', false, "./src/assets/decors/Cheese.png");
+    super(x, y, 25, 25, 'yellow', false, cheesetexture);
     this.collected = false;
   }
 
@@ -860,7 +867,7 @@ const powerups = [
 
 const platforms = [
   new RepellingSurface (0, 10, 20, 700, 'blue'),   
-  new Platform (0, 580, 800, 20, 'blue', true, "./src/assets/blocks/Grass.png"),
+  new Platform (0, 580, 800, 20, 'blue', true, grasstexture),
   new RepellingSurface (440, 490, 800, 20, 'blue'),                                      
   new SlowMotionBlock(200, 300, 100, 80, 'brown'), 
   new SlowMotionBlock(400, 400, 100, 100, 'green'),   
