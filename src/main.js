@@ -1,5 +1,6 @@
   import './style.css';
   import miceimg from './assets/mice/mice1.png';
+  import micecheese1 from './assets/mice/micecheese1.png';
   import checkpointimg from "./assets/decors/Hole.png";
   import trampolinetexture from "./assets/blocks/Trampoline.png";
   import chocolattexture from "./assets/blocks/Chocolat.png";
@@ -369,10 +370,19 @@ class RepellingSurface extends GameObject {
     }, 2000);
   }
 }
+const images = import.meta.glob('./src/assets/mice/*.png', { eager: true });
+const loadedFrames = [];
+for (const path in images) {
+  const img = new Image();
+  img.src = images[path].default || images[path];
+  loadedFrames.push(img);
+}
 class Mouse extends GameObject {
-  constructor(x, y) {
+  constructor(x, y, id) {
     super(x, y, 40, 40, 'gray', false, miceimg);
-    this.speed = 2;
+    this.id = id;
+    this.haveCheese = false; // Nueva propiedad
+    this.speed = 2;           
     this.jumpForce = 8;
     this.jumpMultiplier = 1;
     this.isJumping = false;
@@ -407,30 +417,42 @@ class Mouse extends GameObject {
         this.loadFrames();
   }
   loadFrames() {
-    const defaultimage = new Image();
-    defaultimage.src = miceimg;
-    this.frames.push(defaultimage);
+    this.frames = []; // Reinicia los frames
+    const defaultImage = new Image();
+    defaultImage.src = this.haveCheese ? micecheese1 : miceimg;
   
-    // Cargar los frames de movimiento dinámicamente
-    const images = import.meta.glob('./assets/mice/micerun*.png', { eager: true });
-    for (const path in images) {
+    defaultImage.onload = () => {
+      this.frames[0] = defaultImage; // Agregar solo después de cargar
+    };
+  
+    // Cargar frames dinámicamente basados en la propiedad haveCheese
+    const basePath = './src/assets/mice/';
+    const assetPrefix = this.haveCheese ? 'miceruncheese' : 'micerun';
+  
+    for (let i = 1; i < 5; i++) {
       const img = new Image();
-      img.src = images[path].default || images[path]; // Usar el path generado por Vite
-      this.frames.push(img);
+      img.src = `${basePath}${assetPrefix}${i}.png`;
+  
+      img.onload = () => {
+        this.frames[i] = img; // Agregar el frame solo después de cargar
+      };
     }
   }
   
+  setAnimationByProperty(property, value) {
+    if (property === 'haveCheese') {
+      this.haveCheese = value;
+      this.loadFrames(); // Recargar los frames con los nuevos assets
+    }
+  }
   updateAnimation(deltaTime) {
     if (Math.abs(this.velocityX) > 0) {
-      // Actualizar animación solo si se está moviendo
       this.frameTimer += deltaTime;
       if (this.frameTimer >= this.animationSpeed) {
-        // Usar los frames de movimiento (índices 1-4)
         this.currentFrame = ((this.currentFrame % this.frameCount) + 1);
         this.frameTimer = 0;
       }
     } else {
-      // Cuando está quieto, usar el frame por defecto (índice 0)
       this.currentFrame = 0;
       this.frameTimer = 0;
     }
@@ -438,7 +460,7 @@ class Mouse extends GameObject {
   draw(ctx) {
     ctx.save();
     let drawWidth, drawHeight, drawX, drawY;
-    // Aplicar efecto espejo según la dirección
+
     if (this.direction === 'left') {
       ctx.translate(this.x + this.width, this.y);
       ctx.scale(-1, 1);
@@ -448,28 +470,17 @@ class Mouse extends GameObject {
 
     const currentSprite = this.frames[this.currentFrame];
     if (currentSprite && currentSprite.complete) {
-      // Ajustar el escalado según si es un frame de corriendo o no
       if (this.currentFrame >= 1 && this.currentFrame <= 4) {
         drawWidth = this.runningWidth;
         drawHeight = this.runningHeight;
-        // Para los frames de corriendo (más pequeños)
-        const scaleFactor = 1.4; // Ajusta este valor según necesites
+        const scaleFactor = 1.4;
         const widthAdjustment = this.width * scaleFactor;
         const heightAdjustment = this.height * scaleFactor;
-        
-        // Centrar el sprite escalado
-        const xOffset =  -(drawWidth - this.width) / 2;
+        const xOffset = -(drawWidth - this.width) / 2;
         const yOffset = -(drawHeight - this.height) / 2 - this.verticalOffset;
-        
-        ctx.drawImage(
-          currentSprite, 
-          xOffset, 
-          yOffset, 
-          widthAdjustment, 
-          heightAdjustment
-        );
+
+        ctx.drawImage(currentSprite, xOffset, yOffset, widthAdjustment, heightAdjustment);
       } else {
-        // Para el frame estático (tamaño normal)
         ctx.drawImage(currentSprite, 0, 0, this.width, this.height);
       }
     }
@@ -598,35 +609,51 @@ class Mouse extends GameObject {
         y: this.y,
         velocityX: this.velocityX,
         velocityY: this.velocityY,
-        isJumping: this.isJumping
+        isJumping: this.isJumping,
+        haveCheese: this.haveCheese,
+        isMovingLeft: this.isMovingLeft ,
+        isMovingRight: this.isMovingRight,
+        isInSlowMotion: this.isInSlowMotion,
+        direction: this.direction
       };
     }
 }
+
 class Checkpoint extends GameObject {
   constructor(x, y) {
     super(x, y, 30, 30, 'purple', false, checkpointimg);
-    this.completed = false;
+    this.playerStates = new Map(); // Map para el estado de cada jugador
   }
 
-  completeTask(target, canvas) {
-    if (!this.completed && target instanceof Point && target.collected) {
-      this.completed = true;
+  // Marca el checkpoint como completado para un jugador específico
+  completeTask(player, target, canvas) {
+    if (player.haveCheese) {
+      this.playerStates.set(player, true); // Marcar como completado para este jugador
+
       // Emitir evento personalizado
       const event = new CustomEvent('taskCompleted', {
-        detail: { message: 'Tarea completada', target: this },
+        detail: { message: 'Tarea completada', target: this, player: player },
       });
       canvas.dispatchEvent(event);
       console.log('Checkpoint completado por colisión');
+      console.log("player.haveCheese", player);
+      console.log("player.haveCheese", player.haveCheese);
     }
   }
 
-  // Agregar método para verificar colisión con el ratón
-  checkMouseCollision(mouse, point, canvas) {
-    if (mouse.intersects(this)) {
-      this.completeTask(point, canvas);
+  // Verificar si un jugador ya ha completado el checkpoint
+  isCompletedBy(player) {
+    return this.playerStates.get(player) || false;
+  }
+
+  // Verificar colisión con un jugador específico
+  checkMouseCollision(player, point, canvas) {
+    if (player.intersects(this) && !this.isCompletedBy(player)) {
+      this.completeTask(player, point, canvas);
     }
   }
 }
+
 class SlowMotionBlock extends GameObject {
   constructor(x, y, width = 40, height = 40, rechargeJump = true) {
     super(x, y, width, height, '#9C27B0', true, chocolattexture);
@@ -714,6 +741,8 @@ class Point extends GameObject {
     if (!this.collected && this.active && mouse.intersects(this)) {
       this.collect();
       console.log('Point recogido por colisión');
+      mouse.setAnimationByProperty('haveCheese', true);
+
     }
   }
 }
@@ -726,7 +755,7 @@ class PlayerManager {
   }
 
   addPlayer(x, y, controls, clientId) {
-    const player = new Mouse(x, y);
+    const player = new Mouse(x, y, clientId);
     const playerData = {
       player,
       id: `${clientId}`,
@@ -789,22 +818,22 @@ class PlayerManager {
     const currentTime = performance.now();
     const deltaTime = (currentTime - this.lastTime) / 1000; // Convertir a segundos
     this.lastTime = currentTime;
-
+  
     this.players.forEach(playerData => {
       const player = playerData.player;
-      
+  
       // Actualizar movimiento y animación
       player.updateAnimation(deltaTime);
       if (playerData.isMovingLeft) player.move('left');
       if (playerData.isMovingRight) player.move('right');
-      
+  
       // Actualizar física
       player.setPhysics(platforms);
-
+  
       // Verificar colisiones con puntos y checkpoint
       point.checkMouseCollision(player);
       checkpoint.checkMouseCollision(player, point, canvas);
-
+  
       // Verificar colisiones con plataformas especiales
       platforms.forEach(platform => {
         if (platform instanceof SlowMotionBlock) {
@@ -814,7 +843,7 @@ class PlayerManager {
           platform.applyEffect(player);
         }
       });
-
+  
       // Procesar powerups
       powerups.forEach(powerup => {
         if (powerup.active && player.intersects(powerup)) {
@@ -824,10 +853,11 @@ class PlayerManager {
         }
       });
     });
-
+  
     // Verificar colisiones entre jugadores
     this.resolvePlayerCollisions();
   }
+  
 
   applyCollisionResponse(playerA, playerB) {
     // Determinar la dirección de la colisión
@@ -851,7 +881,6 @@ class PlayerManager {
         playerB.velocityX = -Math.abs(playerB.velocityX) * 0.5;
       }
     } else if (overlapY > 0) {
-      console.log("colision vertical",playerA,playerB);
       playerA.rechargeJump();
       playerB.rechargeJump();
       if (dy > 0) {
@@ -876,6 +905,7 @@ class PlayerManager {
   updatePlayerState(clientId, state) {
     if (!state) return;
     const playerData = this.players.find(p => p.id === clientId);
+    console.log("state",state);
     if (playerData) {
       const player = playerData.player;
       player.x = state.x;
@@ -883,6 +913,11 @@ class PlayerManager {
       player.velocityX = state.velocityX;
       player.velocityY = state.velocityY;
       player.isJumping = state.isJumping;
+      player.haveCheese = state.haveCheese;
+      player.isMovingLeft = state.isMovingLeft;
+      player.isMovingRight = state.isMovingRight;
+      player.isInSlowMotion = state.isInSlowMotion; 
+      player.direction = state.direction;
     }
   }
   getPlayerdata(clientId) {
@@ -1071,5 +1106,6 @@ window.addEventListener('resize', () => {
 });
 
 canvas.addEventListener('taskCompleted', (event) => {
-  console.log(event.detail.message); // "Tarea completada"
+  console.log(event.detail); // "Tarea completada"
+  playerManager.removePlayer(event.detail.player.id);
 });
