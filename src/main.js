@@ -718,6 +718,7 @@ class Point extends GameObject {
   }
 }
 class PlayerManager {
+  static enablePlayerCollisions = true; 
   constructor() {
     this.players = [];
     this.playerControls = new Map();
@@ -783,17 +784,20 @@ class PlayerManager {
     });
   }
 
+
   update(platforms, powerups, checkpoint, point, canvas) {
     const currentTime = performance.now();
     const deltaTime = (currentTime - this.lastTime) / 1000; // Convertir a segundos
     this.lastTime = currentTime;
+
     this.players.forEach(playerData => {
       const player = playerData.player;
       
-      // Actualizar movimiento
+      // Actualizar movimiento y animación
       player.updateAnimation(deltaTime);
       if (playerData.isMovingLeft) player.move('left');
       if (playerData.isMovingRight) player.move('right');
+      
       // Actualizar física
       player.setPhysics(platforms);
 
@@ -820,6 +824,48 @@ class PlayerManager {
         }
       });
     });
+
+    // Verificar colisiones entre jugadores
+    this.resolvePlayerCollisions();
+  }
+
+  applyCollisionResponse(playerA, playerB) {
+    // Determinar la dirección de la colisión
+    const dx = playerB.x - playerA.x;
+    const dy = playerB.y - playerA.y;
+
+    const overlapX = playerA.width / 2 + playerB.width / 2 - Math.abs(dx);
+    const overlapY = playerA.height / 2 + playerB.height / 2 - Math.abs(dy);
+
+    if (overlapX > 0 && overlapX < overlapY) {
+      // Resolver colisión horizontal
+      if (dx > 0) {
+        playerA.x -= overlapX / 2;
+        playerB.x += overlapX / 2;
+        playerA.velocityX = -Math.abs(playerA.velocityX) * 0.5;
+        playerB.velocityX = Math.abs(playerB.velocityX) * 0.5;
+      } else {
+        playerA.x += overlapX / 2;
+        playerB.x -= overlapX / 2;
+        playerA.velocityX = Math.abs(playerA.velocityX) * 0.5;
+        playerB.velocityX = -Math.abs(playerB.velocityX) * 0.5;
+      }
+    } else if (overlapY > 0) {
+      console.log("colision vertical",playerA,playerB);
+      playerA.rechargeJump();
+      playerB.rechargeJump();
+      if (dy > 0) {
+        playerA.y -= overlapY / 2;
+        playerB.y += overlapY / 2;
+        playerA.velocityY = -Math.abs(playerA.velocityY) * 0.5;
+        playerB.velocityY = Math.abs(playerB.velocityY) * 0.5;
+      } else {
+        playerA.y += overlapY / 2;
+        playerB.y -= overlapY / 2;
+        playerA.velocityY = Math.abs(playerA.velocityY) * 0.5;
+        playerB.velocityY = -Math.abs(playerB.velocityY) * 0.5;
+      }
+    }
   }
 
   draw(ctx) {
@@ -845,9 +891,32 @@ class PlayerManager {
       return playerData.player.getPlayerdata();
     }
   }
+  resolvePlayerCollisions() {
+    if (!PlayerManager.enablePlayerCollisions) return; // Salir si las colisiones están deshabilitadas
 
+    for (let i = 0; i < this.players.length; i++) {
+      for (let j = i + 1; j < this.players.length; j++) {
+        const playerA = this.players[i].player;
+        const playerB = this.players[j].player;
+
+        if (this.isColliding(playerA, playerB)) {
+          this.applyCollisionResponse(playerA, playerB);
+        }
+      }
+    }
+  }
+
+
+  isColliding(playerA, playerB) {
+    return (
+      playerA.x < playerB.x + playerB.width &&
+      playerA.x + playerA.width > playerB.x &&
+      playerA.y < playerB.y + playerB.height &&
+      playerA.y + playerA.height > playerB.y
+    );
+  }
 }
-
+PlayerManager.enablePlayerCollisions = true; // Activa colisiones
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
@@ -865,16 +934,85 @@ const powerups = [
   new RechargeJump(700, 200),
 ];
 
-const platforms = [
-  new RepellingSurface (0, 10, 20, 700, 'blue'),   
-  new Platform (0, 580, 800, 20, 'blue', true, grasstexture),
-  new RepellingSurface (440, 490, 800, 20, 'blue'),                                      
-  new SlowMotionBlock(200, 300, 100, 80, 'brown'), 
-  new SlowMotionBlock(400, 400, 100, 100, 'green'),   
-  new SlowMotionBlock(400, 560, 100, 20, 'green'),   
-  new SlowMotionBlock(600, 290, 200, 40, 'cyan'),             
-];
 
+const jsonlevel = {
+  platforms: [
+    {
+      name: 'repelling',
+      x: 0,
+      y: 10,
+      width: 20,
+      height: 700,
+      color: 'blue'
+    },
+    {
+      name: 'platform',
+      x: 0,
+      y: 580,
+      width: 800,
+      height: 20,
+      color: 'blue',
+      hasBottomCollision: true,
+      src: grasstexture
+    },
+    {
+      name: 'repelling',
+      x: 440,
+      y: 490,
+      width: 800,
+      height: 20,
+      color: 'blue'
+    },
+    {
+      name: 'slowmotion',
+      x: 200,
+      y: 300,
+      width: 100,
+      height: 80,
+      color: 'brown'
+    },
+    {
+      name: 'slowmotion',
+      x: 400,
+      y: 400,
+      width: 100,
+      height: 100,
+      color: 'green'
+    },
+    {
+      name: 'slowmotion',
+      x: 400,
+      y: 560,
+      width: 100,
+      height: 20,
+      color: 'green'
+    },
+    {
+      name: 'slowmotion',
+      x: 600,
+      y: 290,
+      width: 200,
+      height: 40,
+      color: 'cyan'
+    }
+  ],
+}
+function getplatform(platformname,x,y,width,height,color,hasBottomCollision = true, src = null) {
+  switch (platformname) {
+    case 'repelling':
+      return new RepellingSurface(x, y, width, height, color, hasBottomCollision, src);
+    case 'platform':
+      return new Platform(x, y, width, height, color, hasBottomCollision, src);
+    case 'slowmotion':
+      return new SlowMotionBlock(x, y, width, height, color, hasBottomCollision, src);
+    default:
+      return null;
+  }
+}
+const newplatforms = jsonlevel.platforms.map(platform => {
+  return getplatform(platform.name,platform.x,platform.y,platform.width,platform.height,platform.color,platform.hasBottomCollision,platform.src);
+});
+console.log("newplatforms",newplatforms);
 const playerManager = new PlayerManager();
 
 // Configurar los controles para cada jugador
@@ -907,12 +1045,12 @@ function gameLoop() {
   point.draw(ctx);
   
   // Dibujar plataformas
-  platforms.forEach(platform => platform.draw(ctx));
+  newplatforms.forEach(platform => platform.draw(ctx));
   
   // Dibujar powerups
   powerups.forEach(powerup => powerup.draw(ctx));
 
-  playerManager.update(platforms, powerups, checkpoint, point, canvas);
+  playerManager.update(newplatforms, powerups, checkpoint, point, canvas);
   playerManager.draw(ctx);
   if (ws && ws.readyState === WebSocket.OPEN) {
     const dataplayer = playerManager.getPlayerdata(localClientId);
