@@ -6,6 +6,14 @@
   import chocolattexture from "./assets/blocks/Chocolat.png";
   import cheesetexture from "./assets/decors/Cheese.png";
   import grasstexture from "./assets/blocks/Grass.png";
+  import micerun1 from "./assets/mice/micerun1.png";
+  import micerun2 from "./assets/mice/micerun2.png";
+  import micerun3 from "./assets/mice/micerun3.png";
+  import micerun4 from "./assets/mice/micerun4.png";
+  import miceruncheese1 from "./assets/mice/miceruncheese1.png";
+  import miceruncheese2 from "./assets/mice/miceruncheese2.png";
+  import miceruncheese3 from "./assets/mice/miceruncheese3.png";
+  import miceruncheese4 from "./assets/mice/miceruncheese4.png";
   console.log(window.location);
   const ws = new WebSocket("wss://clean-tiger-84.deno.dev");
   const localClientId = Math.random().toString(36).substr(2, 9); // ID único para el cliente local
@@ -377,6 +385,10 @@ for (const path in images) {
   img.src = images[path].default || images[path];
   loadedFrames.push(img);
 }
+function getassets(assetname) {
+  const assets = {micerun1, micerun2, micerun3, micerun4, miceruncheese1, miceruncheese2, miceruncheese3, miceruncheese4};
+  return assets[assetname];
+}
 class Mouse extends GameObject {
   constructor(x, y, id) {
     super(x, y, 40, 40, 'gray', false, miceimg);
@@ -426,13 +438,12 @@ class Mouse extends GameObject {
     };
   
     // Cargar frames dinámicamente basados en la propiedad haveCheese
-    const basePath = './src/assets/mice/';
     const assetPrefix = this.haveCheese ? 'miceruncheese' : 'micerun';
   
     for (let i = 1; i < 5; i++) {
       const img = new Image();
-      img.src = `${basePath}${assetPrefix}${i}.png`;
-  
+      //img.src = `${basePath}${assetPrefix}${i}.png`;
+      img.src = getassets(`${assetPrefix}${i}`);
       img.onload = () => {
         this.frames[i] = img; // Agregar el frame solo después de cargar
       };
