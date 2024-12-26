@@ -52,6 +52,15 @@ ws.onopen = () => {
         console.log(`Player left: ${data.clientId}`);
         removePlayer(data.clientId);
         break;
+      case 'getCheckpoint':
+        // Recibir evento de tarea completada
+        console.log("Recibir evento de tarea completada",data);
+        break;
+      case 'getPoint':
+        // Recibir evento de tarea completada
+        console.log("Recibir evento de tarea completada",data);
+        playerManager.updatefield(data.clientId, data.state,data.type);
+        break;
     }
   };
 
@@ -625,137 +634,10 @@ class Mouse extends GameObject {
         isMovingLeft: this.isMovingLeft ,
         isMovingRight: this.isMovingRight,
         isInSlowMotion: this.isInSlowMotion,
-        direction: this.direction
+        direction: this.direction,
+        id: this.id
       };
     }
-}
-
-class Checkpoint extends GameObject {
-  constructor(x, y) {
-    super(x, y, 30, 30, 'purple', false, checkpointimg);
-    this.playerStates = new Map(); // Map para el estado de cada jugador
-  }
-
-  // Marca el checkpoint como completado para un jugador específico
-  completeTask(player, target, canvas) {
-    if (player.haveCheese) {
-      this.playerStates.set(player, true); // Marcar como completado para este jugador
-
-      // Emitir evento personalizado
-      const event = new CustomEvent('taskCompleted', {
-        detail: { message: 'Tarea completada', target: this, player: player },
-      });
-      canvas.dispatchEvent(event);
-      console.log('Checkpoint completado por colisión');
-      console.log("player.haveCheese", player);
-      console.log("player.haveCheese", player.haveCheese);
-    }
-  }
-
-  // Verificar si un jugador ya ha completado el checkpoint
-  isCompletedBy(player) {
-    return this.playerStates.get(player) || false;
-  }
-
-  // Verificar colisión con un jugador específico
-  checkMouseCollision(player, point, canvas) {
-    if (player.intersects(this) && !this.isCompletedBy(player)) {
-      this.completeTask(player, point, canvas);
-    }
-  }
-}
-
-class SlowMotionBlock extends GameObject {
-  constructor(x, y, width = 40, height = 40, rechargeJump = true) {
-    super(x, y, width, height, '#9C27B0', true, chocolattexture);
-    this.playerStates = new Map(); // Mapa para almacenar el estado de cada jugador
-    this.slowFactor = 0.2;
-    this.jumpReductionFactor = 0.2;
-    this.lastx = x;
-    this.lasty = y;
-    this.rechargeJump = rechargeJump;
-  }
-
-  // Método auxiliar para obtener o crear el estado de un jugador
-  getPlayerState(player) {
-    const playerId = player.id || player; // Usa el ID del jugador si existe, si no usa el objeto como clave
-    if (!this.playerStates.has(playerId)) {
-      this.playerStates.set(playerId, {
-        isColliding: false,
-        hasRecharged: false
-      });
-    }
-    return this.playerStates.get(playerId);
-  }
-
-  checkMouseCollision(mouse) {
-    const playerState = this.getPlayerState(mouse);
-    const isCurrentlyColliding = mouse.isColliding(this);
-    
-    if (isCurrentlyColliding) {
-      this.lastx = this.x;
-      this.lasty = this.y;
-      mouse.setTemporaryEffects(
-        this.slowFactor,
-        this.jumpReductionFactor
-      );
-      if (this.rechargeJump)mouse.rechargeJump();
-
-      if (!playerState.hasRecharged && mouse.canCollide()) {
-        mouse.rechargeJump();
-        playerState.hasRecharged = true;
-      }
-      
-      playerState.isColliding = true;
-    } else {
-      if (playerState.isColliding) {
-        mouse.resetTemporaryEffects();
-        playerState.isColliding = false;
-        playerState.hasRecharged = false;
-      }
-    }
-  }
-
-  draw(ctx) {
-    super.draw(ctx);
-    
-    // Dibuja el borde si cualquier jugador está colisionando
-    const anyPlayerColliding = Array.from(this.playerStates.values())
-      .some(state => state.isColliding);
-      
-    if (anyPlayerColliding) {
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(this.x, this.y, this.width, this.height);
-    }
-  }
-
-  // Método para limpiar el estado de un jugador cuando sea necesario
-  clearPlayerState(player) {
-    const playerId = player.id || player;
-    this.playerStates.delete(playerId);
-  }
-}
-class Point extends GameObject {
-  constructor(x, y) {
-    super(x, y, 25, 25, 'yellow', false, cheesetexture);
-    this.collected = false;
-  }
-
-  collect() {
-    this.collected = true;
-    this.active = false;
-  }
-
-  // Agregar método para verificar colisión con el ratón
-  checkMouseCollision(mouse) {
-    if (!this.collected && this.active && mouse.intersects(this)) {
-      this.collect();
-      console.log('Point recogido por colisión');
-      mouse.setAnimationByProperty('haveCheese', true);
-
-    }
-  }
 }
 class PlayerManager {
   static enablePlayerCollisions = true; 
@@ -785,7 +667,21 @@ class PlayerManager {
       this.players.splice(index, 1);
     }
   }
-
+  updatefield(clientId, state,statetype) {
+    if (!state) return;
+    const playerData = this.players.find(p => p.id === clientId);
+    if (playerData) {
+      switch (statetype) {
+        case 'getCheckpoint':
+          this.removePlayer(clientId);
+          break;
+        case 'getPoint':
+          playerData.player.setAnimationByProperty('haveCheese', true);
+          playerData.player.loadFrames();
+          break;
+      }
+    }
+  }
   setupPlayerControls(playerData) {
     const { controls } = playerData;
     if (!controls) return;
@@ -916,7 +812,6 @@ class PlayerManager {
   updatePlayerState(clientId, state) {
     if (!state) return;
     const playerData = this.players.find(p => p.id === clientId);
-    console.log("state",state);
     if (playerData) {
       const player = playerData.player;
       player.x = state.x;
@@ -962,6 +857,133 @@ class PlayerManager {
     );
   }
 }
+class Checkpoint extends GameObject {
+  constructor(x, y) {
+    super(x, y, 30, 30, 'purple', false, checkpointimg);
+    this.playerStates = new Map(); // Map para el estado de cada jugador
+  }
+
+  // Marca el checkpoint como completado para un jugador específico
+  completeTask(player, target, canvas) {
+    if (player.haveCheese) {
+      this.playerStates.set(player, true); // Marcar como completado para este jugador
+
+      // Emitir evento personalizado
+      const event = new CustomEvent('taskCompleted', {
+        detail: { message: 'Tarea completada', target: this, player: player },
+      });
+      canvas.dispatchEvent(event);
+      emitplayerevent('getCheckpoint', player.getPlayerdata());
+      console.log("player.haveCheese Checkpoint", player);
+    }
+  }
+
+  // Verificar si un jugador ya ha completado el checkpoint
+  isCompletedBy(player) {
+    return this.playerStates.get(player) || false;
+  }
+
+  // Verificar colisión con un jugador específico
+  checkMouseCollision(player, point, canvas) {
+    if (player.intersects(this) && !this.isCompletedBy(player)) {
+      this.completeTask(player, point, canvas);
+    }
+  }
+}
+
+class SlowMotionBlock extends GameObject {
+  constructor(x, y, width = 40, height = 40, rechargeJump = true) {
+    super(x, y, width, height, '#9C27B0', true, chocolattexture);
+    this.playerStates = new Map(); // Mapa para almacenar el estado de cada jugador
+    this.slowFactor = 0.2;
+    this.jumpReductionFactor = 0.2;
+    this.lastx = x;
+    this.lasty = y;
+    this.rechargeJump = rechargeJump;
+  }
+
+  // Método auxiliar para obtener o crear el estado de un jugador
+  getPlayerState(player) {
+    const playerId = player.id || player; // Usa el ID del jugador si existe, si no usa el objeto como clave
+    if (!this.playerStates.has(playerId)) {
+      this.playerStates.set(playerId, {
+        isColliding: false,
+        hasRecharged: false
+      });
+    }
+    return this.playerStates.get(playerId);
+  }
+
+  checkMouseCollision(mouse) {
+    const playerState = this.getPlayerState(mouse);
+    const isCurrentlyColliding = mouse.isColliding(this);
+    
+    if (isCurrentlyColliding) {
+      this.lastx = this.x;
+      this.lasty = this.y;
+      mouse.setTemporaryEffects(
+        this.slowFactor,
+        this.jumpReductionFactor
+      );
+      if (this.rechargeJump)mouse.rechargeJump();
+
+      if (!playerState.hasRecharged && mouse.canCollide()) {
+        mouse.rechargeJump();
+        playerState.hasRecharged = true;
+      }
+      
+      playerState.isColliding = true;
+    } else {
+      if (playerState.isColliding) {
+        mouse.resetTemporaryEffects();
+        playerState.isColliding = false;
+        playerState.hasRecharged = false;
+      }
+    }
+  }
+
+  draw(ctx) {
+    super.draw(ctx);
+    
+    // Dibuja el borde si cualquier jugador está colisionando
+    const anyPlayerColliding = Array.from(this.playerStates.values())
+      .some(state => state.isColliding);
+      
+    if (anyPlayerColliding) {
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(this.x, this.y, this.width, this.height);
+    }
+  }
+
+  // Método para limpiar el estado de un jugador cuando sea necesario
+  clearPlayerState(player) {
+    const playerId = player.id || player;
+    this.playerStates.delete(playerId);
+  }
+}
+class Point extends GameObject {
+  constructor(x, y) {
+    super(x, y, 25, 25, 'yellow', false, cheesetexture);
+    this.collected = false;
+  }
+
+  collect() {
+    this.collected = true;
+    this.active = false;
+  }
+
+  // Agregar método para verificar colisión con el ratón
+  checkMouseCollision(mouse) {
+    if (!this.collected && this.active && mouse.intersects(this)) {
+      this.collect();
+      console.log('Point recogido por colisión');
+      mouse.setAnimationByProperty('haveCheese', true);
+      emitplayerevent('getPoint', mouse.getPlayerdata());
+    }
+  }
+}
+
 PlayerManager.enablePlayerCollisions = true; // Activa colisiones
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -1078,11 +1100,6 @@ function spawnPlayer(clientId, state) {
   console.log('Player spawned:', state,clientId);
 }
 
-// Añadir jugadores locamente
-//playerManager.addPlayer(50, 550, defaultcontrolls);
-//playerManager.addPlayer(100, 550, player2Controls);
-
-// Modificar el gameLoop para usar PlayerManager
 function gameLoop() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -1107,6 +1124,13 @@ function gameLoop() {
 
 
 gameLoop();
+function emitplayerevent(eventname, eventdata) {
+  if (!ws && !ws.readyState === WebSocket.OPEN) return;
+  if (eventname && eventdata) {
+    const event = ws.send(JSON.stringify({ type: eventname, state: eventdata }));
+    console.log("eventname eventdata",eventname,eventdata);
+  }
+}
 window.addEventListener('resize', () => {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
